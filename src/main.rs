@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Parser, Subcommand};
+use core::num::ParseIntError;
 use log::debug;
-use parse_int::parse;
 use ultimate64::aux;
 use ultimate64::{drives, Rest};
 extern crate pretty_env_logger;
@@ -49,7 +49,7 @@ enum DiskImageCmd {
         file: std::ffi::OsString,
         /// Drive number
         #[clap(long, short = 'i', default_value = "8")]
-        #[arg(value_parser = parse::<u8>)]
+        #[arg(value_parser = parse_uint::<u8>)]
         drive_id: u8,
         /// Mount mode
         #[clap(long, short = 'm', default_value = "ro")]
@@ -73,7 +73,7 @@ enum Commands {
         file: std::ffi::OsString,
         /// Load address; otherwise deduce from first two bytes in file
         #[clap(long, short = '@', default_value = None)]
-        #[arg(value_parser = parse::<u16>)]
+        #[arg(value_parser = parse_uint::<u16>)]
         address: Option<u16>,
     },
     /// Play Amiga MOD file
@@ -86,11 +86,11 @@ enum Commands {
     /// Read memory
     Peek {
         /// Address to read from, e.g. `4096` or `0x1000`
-        #[arg(value_parser = parse::<u16>)]
+        #[arg(value_parser = parse_uint::<u16>)]
         address: u16,
         /// Number of bytes to read
         #[clap(long, short = 'n', default_value = "1")]
-        #[arg(value_parser = parse::<u16>)]
+        #[arg(value_parser = parse_uint::<u16>)]
         length: u16,
         /// Write to binary file instead of hexdump
         #[clap(long, short = 'o')]
@@ -102,10 +102,10 @@ enum Commands {
     /// Write single byte to memory
     Poke {
         /// Address to write to, e.g. `4096` or `0x1000`
-        #[arg(value_parser = parse::<u16>)]
+        #[arg(value_parser = parse_uint::<u16>)]
         address: u16,
         /// Value to write, e.g. `16`, `0x10` or `0b0001_0000`
-        #[arg(value_parser = parse::<u8>)]
+        #[arg(value_parser = parse_uint::<u8>)]
         value: u8,
         /// Bitwise AND with existing value
         #[clap(long = "and", action, conflicts_with_all = ["bitwise_or", "bitwise_xor"])]
@@ -117,7 +117,7 @@ enum Commands {
         #[clap(long = "xor", action, conflicts_with_all = ["bitwise_and", "bitwise_or"])]
         bitwise_xor: bool,
         #[clap(long, short = 'f', conflicts_with_all = ["bitwise_and", "bitwise_or", "bitwise_xor"])]
-        #[arg(value_parser = parse::<u16>)]
+        #[arg(value_parser = parse_uint::<u16>)]
         /// Fill n bytes with value
         fill: Option<u16>,
     },
@@ -141,9 +141,25 @@ enum Commands {
         file: std::ffi::OsString,
         /// Optional song number
         #[clap(short = 'n')]
-        #[arg(value_parser = parse::<u8>)]
+        #[arg(value_parser = parse_uint::<u8>)]
         songnr: Option<u8>,
     },
+}
+
+fn parse_uint<T>(arg: &str) -> Result<T, std::num::ParseIntError>
+where
+    T: num_traits::Num<FromStrRadixErr = ParseIntError>,
+{
+    let s = arg.trim().replace("_", "");
+    if let Some(hex) = s.strip_prefix("0x") {
+        T::from_str_radix(hex, 16)
+    } else if let Some(hex) = s.strip_prefix("$") {
+        T::from_str_radix(hex, 16)
+    } else if let Some(bin) = s.strip_prefix("b") {
+        T::from_str_radix(bin, 2)
+    } else {
+        T::from_str_radix(&s, 10)
+    }
 }
 
 /// Disassemble `length` bytes from memory, starting at `address`
